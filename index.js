@@ -24,12 +24,21 @@ const corsOptions = {
 app.use('/track', cors(corsOptions));
 
 // --- MongoDB Connection ---
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('Successfully connected to MongoDB Atlas.'))
-    .catch(err => {
-        console.error('Connection error', err);
-        process.exit();
-    });
+if (!process.env.MONGO_URI) {
+    console.error('MONGO_URI environment variable is required');
+    if (process.env.NODE_ENV !== 'production') {
+        process.exit(1);
+    }
+} else {
+    mongoose.connect(process.env.MONGO_URI)
+        .then(() => console.log('Successfully connected to MongoDB Atlas.'))
+        .catch(err => {
+            console.error('Connection error', err);
+            if (process.env.NODE_ENV !== 'production') {
+                process.exit();
+            }
+        });
+}
 
 // --- Mongoose Schema and Model ---
 const visitorSchema = new mongoose.Schema({
@@ -119,6 +128,15 @@ app.get('/track', async (req, res) => {
             await visitor.save();
             console.log(`Existing visitor [${ip}]. Count: ${visitor.count}`);
         } else {
+            // Check if IPDATA_API_KEY is available
+            if (!process.env.IPDATA_API_KEY) {
+                console.error('IPDATA_API_KEY environment variable is required for new visitors');
+                return res.status(500).json({ 
+                    success: false, 
+                    message: "API configuration error." 
+                });
+            }
+
             // If new visitor, get data from ipdata.co
             const response = await axios.get(`https://api.ipdata.co/${ip}?api-key=${process.env.IPDATA_API_KEY}`);
             const ipData = response.data;
@@ -159,6 +177,12 @@ app.get('/track', async (req, res) => {
 });
 
 // --- Start Server ---
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+}
+
+// Export the Express app for Vercel
+module.exports = app;
