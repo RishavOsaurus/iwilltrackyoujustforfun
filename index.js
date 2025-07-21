@@ -58,43 +58,43 @@ const visitorSchema = new mongoose.Schema({
     calling_code: String,
     flag: String,
     carrier: {
-        name: String,
-        mcc: String,
-        mnc: String
+        name: { type: String, default: null },
+        mcc: { type: String, default: null },
+        mnc: { type: String, default: null }
     },
     language: {
-        name: String,
-        native: String
+        name: { type: String, default: null },
+        native: { type: String, default: null }
     },
     currency: {
-        name: String,
-        code: String,
-        symbol: String,
-        native: String,
-        plural: String
+        name: { type: String, default: null },
+        code: { type: String, default: null },
+        symbol: { type: String, default: null },
+        native: { type: String, default: null },
+        plural: { type: String, default: null }
     },
     time_zone: {
-        name: String,
-        abbr: String,
-        offset: String,
-        is_dst: Boolean,
-        current_time: String
+        name: { type: String, default: null },
+        abbr: { type: String, default: null },
+        offset: { type: String, default: null },
+        is_dst: { type: Boolean, default: null },
+        current_time: { type: String, default: null }
     },
     threat: {
-        is_tor: Boolean,
-        is_proxy: Boolean,
-        is_anonymous: Boolean,
-        is_known_attacker: Boolean,
-        is_known_abuser: Boolean,
-        is_threat: Boolean,
-        is_bogon: Boolean
+        is_tor: { type: Boolean, default: null },
+        is_proxy: { type: Boolean, default: null },
+        is_anonymous: { type: Boolean, default: null },
+        is_known_attacker: { type: Boolean, default: null },
+        is_known_abuser: { type: Boolean, default: null },
+        is_threat: { type: Boolean, default: null },
+        is_bogon: { type: Boolean, default: null }
     },
     asn: {
-        asn: String,
-        name: String,
-        domain: String,
-        route: String,
-        type: String
+        asn: { type: String, default: null },
+        name: { type: String, default: null },
+        domain: { type: String, default: null },
+        route: { type: String, default: null },
+        type: { type: String, default: null }
     },
     first_visit: { type: Date, default: Date.now },
     last_visit: { type: Date, default: Date.now }
@@ -141,6 +141,8 @@ app.get('/track', async (req, res) => {
             const response = await axios.get(`https://api.ipdata.co/${ip}?api-key=${process.env.IPDATA_API_KEY}`);
             const ipData = response.data;
 
+            console.log('API Response ASN:', JSON.stringify(ipData.asn, null, 2));
+
             // Create a new visitor record
             const newVisitor = new Visitor({
                 ip: ip,
@@ -157,12 +159,12 @@ app.get('/track', async (req, res) => {
                 postal: ipData.postal,
                 calling_code: ipData.calling_code,
                 flag: ipData.flag,
-                carrier: ipData.carrier,
-                language: ipData.language,
-                currency: ipData.currency,
-                time_zone: ipData.time_zone,
-                threat: ipData.threat,
-                asn: ipData.asn
+                carrier: ipData.carrier || {},
+                language: ipData.language || {},
+                currency: ipData.currency || {},
+                time_zone: ipData.time_zone || {},
+                threat: ipData.threat || {},
+                asn: ipData.asn || {}
             });
             await newVisitor.save();
             console.log(`New visitor [${ip}] from ${ipData.city}, ${ipData.country_name}.`);
