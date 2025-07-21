@@ -44,6 +44,7 @@ if (!process.env.MONGO_URI) {
 const visitorSchema = new mongoose.Schema({
     ip: { type: String, required: true, unique: true },
     count: { type: Number, default: 1 },
+    user_agent: { type: String, default: null },
     is_eu: Boolean,
     city: String,
     region: String,
@@ -117,14 +118,100 @@ app.get('/track', async (req, res) => {
     // Use a default IP for local testing, otherwise use the request IP
     const ip = req.ip === '::1' || req.ip === '127.0.0.1' ? '8.8.8.8' : req.ip;
 
+    // Bot detection function
+    const isBot = (userAgent, ip) => {
+        if (!userAgent) return true; // No user agent = likely bot
+
+        const botPatterns = [
+            // Search engine bots
+            /googlebot/i, /bingbot/i, /slurp/i, /duckduckbot/i, /baiduspider/i,
+            /yandexbot/i, /facebookexternalhit/i, /twitterbot/i, /linkedinbot/i,
+            
+            // SEO and monitoring tools
+            /ahrefsbot/i, /semrushbot/i, /mj12bot/i, /dotbot/i, /screaming frog/i,
+            /sitebulb/i, /seositemarkup/i, /spyfu/i,
+            
+            // Generic bot patterns
+            /bot/i, /crawler/i, /spider/i, /scraper/i, /curl/i, /wget/i,
+            /python-requests/i, /node-fetch/i, /axios/i, /postman/i,
+            
+            // Uptime monitors
+            /pingdom/i, /uptimerobot/i, /newrelic/i, /monitis/i, /site24x7/i,
+            
+            // Security scanners
+            /nessus/i, /nmap/i, /masscan/i, /zap/i, /nikto/i,
+            
+            // Other automated tools
+            /headlesschrome/i, /phantomjs/i, /selenium/i, /webdriver/i,
+            /preview/i, /validator/i, /scanner/i, /monitor/i
+        ];
+
+        // Check if user agent matches any bot pattern
+        for (const pattern of botPatterns) {
+            if (pattern.test(userAgent)) {
+                return true;
+            }
+        }
+
+        // Additional checks for suspicious patterns
+        if (userAgent.length < 10 || userAgent.length > 500) {
+            return true; // Suspiciously short or long user agent
+        }
+
+        // Check for common cloud/hosting IPs (basic check)
+        const suspiciousIPRanges = [
+            /^64\.233\./, /^66\.249\./, // Google
+            /^207\.46\./, /^40\.77\./, // Microsoft/Bing
+            /^54\./, /^3\./, /^18\./, // AWS
+            /^104\.154\./, /^35\./, // Google Cloud
+            /^13\./, /^20\./, /^52\./ // Azure
+        ];
+
+        for (const range of suspiciousIPRanges) {
+            if (range.test(ip)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    // Get user agent from request headers
+    const userAgent = req.get('User-Agent') || '';
+    
+    // Check if request is from a bot
+    if (isBot(userAgent, ip)) {
+        console.log(`Bot detected and ignored: ${userAgent} from ${ip}`);
+        return res.status(200).json({ 
+            success: true, 
+            message: "Request acknowledged (bot filtered)" 
+        });
+    }
+
     try {
         // Find if the visitor already exists
         let visitor = await Visitor.findOne({ ip: ip });
 
         if (visitor) {
+            // Check for suspicious rapid requests (potential crawler)
+            const timeSinceLastVisit = new Date() - visitor.last_visit;
+            const minTimeBetweenRequests = 5000; // 5 seconds minimum
+            
+            if (timeSinceLastVisit < minTimeBetweenRequests) {
+                console.log(`Rate limited request from ${ip}. Time since last: ${timeSinceLastVisit}ms`);
+                return res.status(429).json({ 
+                    success: false, 
+                    message: "Rate limit exceeded" 
+                });
+            }
+
             // If visitor exists, increment the count and update last_visit
             visitor.count++;
             visitor.last_visit = new Date();
+            // Update user agent if it has changed
+            if (userAgent !== visitor.user_agent) {
+                visitor.user_agent = userAgent;
+            }
             await visitor.save();
             console.log(`Existing visitor [${ip}]. Count: ${visitor.count}`);
         } else {
@@ -146,6 +233,7 @@ app.get('/track', async (req, res) => {
             // Create a new visitor record
             const newVisitor = new Visitor({
                 ip: ip,
+                user_agent: userAgent,
                 is_eu: ipData.is_eu,
                 city: ipData.city,
                 region: ipData.region,
