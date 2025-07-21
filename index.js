@@ -14,13 +14,14 @@ const PORT = process.env.PORT || 3000;
 // Trust proxy headers to get the real IP address of the visitor
 app.set('trust proxy', true);
 
-// Enable CORS with specific options
-// Make sure FRONTEND_URL in your .env file is the exact URL where the HTML file is hosted.
+// Enable CORS with specific options for the /track endpoint only
 const corsOptions = {
     origin: "*", 
     optionsSuccessStatus: 200
 };
-app.use(cors(corsOptions));
+
+// Apply CORS only to the /track endpoint
+app.use('/track', cors(corsOptions));
 
 // --- MongoDB Connection ---
 mongoose.connect(process.env.MONGO_URI)
@@ -91,6 +92,16 @@ const visitorSchema = new mongoose.Schema({
 });
 
 const Visitor = mongoose.model('Visitor', visitorSchema);
+
+// --- Root endpoint (no CORS restriction) ---
+app.get('/', (req, res) => {
+    res.status(200).json({ 
+        success: true, 
+        message: "API is working! 🎉",
+        timestamp: new Date().toISOString(),
+        status: "Server is running smoothly"
+    });
+});
 
 // --- API Endpoint ---
 app.get('/track', async (req, res) => {
